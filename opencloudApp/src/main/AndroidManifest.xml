@@ -103,43 +103,43 @@
         <activity
             android:name=".presentation.docs.DocsLauncherActivity"
             android:exported="false" />
-        <!-- Separate home screen icons for Docs / Sheets / Slides, all opening the launcher above -->
-        <activity-alias
+        <!-- Separate home screen icons for Docs / Sheets / Slides, each in its own task -->
+        <activity
             android:name=".presentation.docs.DocsLauncher"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_docs"
             android:label="@string/launcher_docs"
             android:roundIcon="@mipmap/ic_launcher_docs"
-            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            android:taskAffinity="${applicationId}.docs">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity-alias>
-        <activity-alias
+        </activity>
+        <activity
             android:name=".presentation.docs.SheetsLauncher"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_sheets"
             android:label="@string/launcher_sheets"
             android:roundIcon="@mipmap/ic_launcher_sheets"
-            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            android:taskAffinity="${applicationId}.sheets">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity-alias>
-        <activity-alias
+        </activity>
+        <activity
             android:name=".presentation.docs.SlidesLauncher"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_slides"
             android:label="@string/launcher_slides"
             android:roundIcon="@mipmap/ic_launcher_slides"
-            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            android:taskAffinity="${applicationId}.slides">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity-alias>
+        </activity>
         <activity
             android:name=".presentation.weboffice.WebOfficeActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"

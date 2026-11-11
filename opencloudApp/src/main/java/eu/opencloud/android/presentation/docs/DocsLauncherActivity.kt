@@ -72,7 +72,7 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import timber.log.Timber
 
-class DocsLauncherActivity : AppCompatActivity() {
+open class DocsLauncherActivity : AppCompatActivity() {
 
     enum class Kind(val label: String, val singular: String, val mediaType: String, val newExt: String, val color: Int) {
         DOCS("Docs", "document", "document", "docx", Color.parseColor("#4285F4")),
@@ -117,14 +117,11 @@ class DocsLauncherActivity : AppCompatActivity() {
         selectKind(kind, reload = true)
     }
 
-    /** Each launcher icon is an alias of this activity; its name tells us which tab to show. */
-    private fun kindFromLauncher(): Kind {
-        val name = intent.component?.className.orEmpty()
-        return when {
-            name.endsWith("SheetsLauncher") -> Kind.SHEETS
-            name.endsWith("SlidesLauncher") -> Kind.SLIDES
-            else -> Kind.DOCS
-        }
+    /** Each home screen icon is its own subclass (own task), so its name tells us which tab to show. */
+    private fun kindFromLauncher(): Kind = when (this) {
+        is SheetsLauncher -> Kind.SHEETS
+        is SlidesLauncher -> Kind.SLIDES
+        else -> Kind.DOCS
     }
 
     private fun buildUi() {
@@ -508,3 +505,11 @@ class DocsLauncherActivity : AppCompatActivity() {
         private val ID_SUB = View.generateViewId()
     }
 }
+
+/*
+ * The Docs / Sheets / Slides home screen icons. Separate activities (rather than aliases) so each
+ * gets its own task: leaving a sheet open in "Sheets" doesn't make the "Docs" icon reopen it.
+ */
+class DocsLauncher : DocsLauncherActivity()
+class SheetsLauncher : DocsLauncherActivity()
+class SlidesLauncher : DocsLauncherActivity()
