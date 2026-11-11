@@ -32,8 +32,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -52,6 +52,8 @@ import eu.opencloud.android.lib.resources.files.search.SearchFilesRemoteOperatio
 import eu.opencloud.android.presentation.authentication.AccountUtils
 import eu.opencloud.android.presentation.weboffice.WebOfficeActivity
 import eu.opencloud.android.ui.activity.FileDisplayActivity
+import eu.opencloud.android.ui.activity.enableEdgeToEdgePostSetContentView
+import eu.opencloud.android.ui.activity.enableEdgeToEdgePreSetContentView
 import eu.opencloud.android.utils.MimetypeIconUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -109,8 +111,16 @@ class DocsLauncherActivity : AppCompatActivity() {
     private fun buildUi() {
         // ExtendedFloatingActionButton / TabLayout require a MaterialComponents theme; the app theme is AppCompat
         val material = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
+        enableEdgeToEdgePreSetContentView(false)
+
         val root = FrameLayout(this)
         val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        // same app bar as the rest of the app (Settings etc.)
+        val appBar = layoutInflater.inflate(R.layout.opencloud_toolbar, column, false)
+        appBar.findViewById<View>(R.id.root_toolbar).isVisible = false
+        val toolbar = appBar.findViewById<Toolbar>(R.id.standard_toolbar).apply { isVisible = true }
+        column.addView(appBar)
 
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@DocsLauncherActivity)
@@ -144,10 +154,13 @@ class DocsLauncherActivity : AppCompatActivity() {
         })
 
         setContentView(root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(left = bars.left, right = bars.right, bottom = bars.bottom)
-            insets
+        setSupportActionBar(toolbar)
+        // opened from the drawer: show a back arrow; opened from its own launcher icon: no arrow
+        supportActionBar?.setDisplayHomeAsUpEnabled(!isTaskRoot)
+
+        enableEdgeToEdgePostSetContentView { insets ->
+            appBar.updatePadding(top = insets.top)
+            root.updatePadding(left = insets.left, right = insets.right, bottom = insets.bottom)
         }
     }
 
@@ -171,6 +184,7 @@ class DocsLauncherActivity : AppCompatActivity() {
         val requestedKind = kind
         swipe.isRefreshing = true
         lifecycleScope.launch {
+            var problem: String? = null
             val (starred, recent) = withContext(Dispatchers.IO) {
                 try {
                     val client = SingleSessionManager.getDefaultSingleton()
@@ -180,10 +194,15 @@ class DocsLauncherActivity : AppCompatActivity() {
                     val recentJob = async { SearchFilesRemoteOperation(type).execute(client) }
                     val s = starredJob.await()
                     val r = recentJob.await()
-                    if (!r.isSuccess) Timber.w("Docs launcher search failed: %s", r.code)
+                    if (!r.isSuccess) {
+                        Timber.w(r.exception, "Docs launcher search failed: %s / HTTP %d", r.code, r.httpCode)
+                        problem = "Search failed: ${r.code} (HTTP ${r.httpCode})" +
+                            (r.exception?.message?.let { " – $it" } ?: "")
+                    }
                     Pair(s.data.orEmpty(), r.data.orEmpty())
                 } catch (e: Exception) {
                     Timber.e(e, "Docs launcher could not reach the server")
+                    problem = "Couldn't reach the server: ${e.javaClass.simpleName} ${e.message.orEmpty()}"
                     Pair(emptyList<SearchResult>(), emptyList<SearchResult>())
                 }
             }
@@ -199,7 +218,7 @@ class DocsLauncherActivity : AppCompatActivity() {
             }
             rows += Row.Header("Recent")
             if (recent.isEmpty()) {
-                rows += Row.Hint("No ${kind.label.lowercase()} found.")
+                rows += Row.Hint(problem ?: "No ${kind.label.lowercase()} found.")
             } else {
                 recent.sortedByDescending { it.lastModified }.forEach { rows += Row.File(it) }
             }
@@ -261,6 +280,11 @@ class DocsLauncherActivity : AppCompatActivity() {
                 Toast.makeText(this@DocsLauncherActivity, "Couldn't create $fileName", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

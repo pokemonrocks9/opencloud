@@ -96,8 +96,7 @@
         <activity android:name=".presentation.settings.SettingsActivity" />
         <activity
             android:name=".presentation.docs.DocsLauncherActivity"
-            android:exported="false"
-            android:theme="@style/Theme.openCloud" />
+            android:exported="false" />
         <!-- Separate home screen icons for Docs / Sheets / Slides, all opening the launcher above -->
         <activity-alias
             android:name=".presentation.docs.DocsLauncher"
