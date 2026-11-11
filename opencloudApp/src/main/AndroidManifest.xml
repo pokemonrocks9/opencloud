@@ -95,6 +95,47 @@
             android:label="@string/actionbar_privacy_policy" />
         <activity android:name=".presentation.settings.SettingsActivity" />
         <activity
+            android:name=".presentation.docs.DocsLauncherActivity"
+            android:exported="false"
+            android:theme="@style/Theme.openCloud" />
+        <!-- Separate home screen icons for Docs / Sheets / Slides, all opening the launcher above -->
+        <activity-alias
+            android:name=".presentation.docs.DocsLauncher"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_docs"
+            android:label="@string/launcher_docs"
+            android:roundIcon="@mipmap/ic_launcher_docs"
+            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".presentation.docs.SheetsLauncher"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sheets"
+            android:label="@string/launcher_sheets"
+            android:roundIcon="@mipmap/ic_launcher_sheets"
+            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".presentation.docs.SlidesLauncher"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_slides"
+            android:label="@string/launcher_slides"
+            android:roundIcon="@mipmap/ic_launcher_slides"
+            android:targetActivity=".presentation.docs.DocsLauncherActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity
             android:name=".presentation.weboffice.WebOfficeActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:theme="@style/Theme.openCloud"

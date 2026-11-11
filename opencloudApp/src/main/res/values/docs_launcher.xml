@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_docs_bg">#1E1F22</color>
+    <color name="launcher_sheets_bg">#1E1F22</color>
+    <color name="launcher_slides_bg">#1E1F22</color>
+    <string name="launcher_docs" translatable="false">Docs</string>
+    <string name="launcher_sheets" translatable="false">Sheets</string>
+    <string name="launcher_slides" translatable="false">Slides</string>
+</resources>
