@@ -6,4 +6,5 @@
     <string name="launcher_docs" translatable="false">Docs</string>
     <string name="launcher_sheets" translatable="false">Sheets</string>
     <string name="launcher_slides" translatable="false">Slides</string>
+    <string name="drawer_docs" translatable="false">Docs, Sheets &amp; Slides</string>
 </resources>

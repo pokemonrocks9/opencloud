@@ -55,6 +55,7 @@ import androidx.drawerlayout.widget.DrawerLayout.DrawerListener
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationView
 import eu.opencloud.android.R
+import eu.opencloud.android.presentation.docs.DocsLauncherActivity
 import eu.opencloud.android.domain.capabilities.model.OCCapability
 import eu.opencloud.android.domain.files.model.FileListOption
 import eu.opencloud.android.domain.user.model.UserQuota
@@ -194,6 +195,9 @@ abstract class DrawerActivity : ToolbarActivity() {
                 R.id.nav_settings -> {
                     val settingsIntent = Intent(applicationContext, SettingsActivity::class.java)
                     startActivity(settingsIntent)
+                }
+                R.id.nav_docs -> {
+                    startActivity(Intent(applicationContext, DocsLauncherActivity::class.java))
                 }
                 R.id.drawer_menu_feedback -> { openFeedback() }
                 R.id.drawer_menu_help -> { openHelp() }

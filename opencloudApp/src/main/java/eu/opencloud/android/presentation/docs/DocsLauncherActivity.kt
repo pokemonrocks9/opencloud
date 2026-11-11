@@ -20,6 +20,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.text.format.DateUtils
 import android.util.TypedValue
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -106,6 +107,8 @@ class DocsLauncherActivity : AppCompatActivity() {
     }
 
     private fun buildUi() {
+        // ExtendedFloatingActionButton / TabLayout require a MaterialComponents theme; the app theme is AppCompat
+        val material = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
         val root = FrameLayout(this)
         val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
@@ -119,7 +122,7 @@ class DocsLauncherActivity : AppCompatActivity() {
             addView(list)
             setOnRefreshListener { load() }
         }
-        tabs = TabLayout(this).apply {
+        tabs = TabLayout(material).apply {
             Kind.values().forEach { addTab(newTab().setText(it.label).setTag(it)) }
             addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) = selectKind(tab.tag as Kind, reload = true)
@@ -131,7 +134,7 @@ class DocsLauncherActivity : AppCompatActivity() {
         column.addView(tabs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(column)
 
-        fab = ExtendedFloatingActionButton(this).apply {
+        fab = ExtendedFloatingActionButton(material).apply {
             setIconResource(R.drawable.ic_add)
             setOnClickListener { promptNewFile() }
         }
