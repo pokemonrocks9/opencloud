@@ -13,6 +13,10 @@
 package eu.opencloud.android.presentation.docs
 
 import android.accounts.Account
+import android.animation.ValueAnimator
+import android.content.ComponentName
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -22,6 +26,8 @@ import android.text.format.DateUtils
 import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -33,15 +39,18 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.tabs.TabLayout
 import eu.opencloud.android.R
+import eu.opencloud.android.data.ClientManager
 import eu.opencloud.android.domain.appregistry.usecases.CreateFileWithAppProviderUseCase
 import eu.opencloud.android.domain.appregistry.usecases.GetUrlToOpenInWebUseCase
 import eu.opencloud.android.domain.spaces.usecases.GetPersonalSpaceForAccountUseCase
@@ -52,6 +61,7 @@ import eu.opencloud.android.lib.resources.files.search.SearchFilesRemoteOperatio
 import eu.opencloud.android.presentation.authentication.AccountUtils
 import eu.opencloud.android.presentation.weboffice.WebOfficeActivity
 import eu.opencloud.android.ui.activity.FileDisplayActivity
+import eu.opencloud.android.ui.activity.SplashActivity
 import eu.opencloud.android.ui.activity.enableEdgeToEdgePostSetContentView
 import eu.opencloud.android.ui.activity.enableEdgeToEdgePreSetContentView
 import eu.opencloud.android.utils.MimetypeIconUtil
@@ -73,12 +83,20 @@ class DocsLauncherActivity : AppCompatActivity() {
     private val getUrlToOpenInWebUseCase: GetUrlToOpenInWebUseCase by inject()
     private val createFileWithAppProviderUseCase: CreateFileWithAppProviderUseCase by inject()
     private val getPersonalSpaceForAccountUseCase: GetPersonalSpaceForAccountUseCase by inject()
+    // Creating the ClientManager registers the connection validator that refreshes expired logins.
+    // The main app does this on startup; when we're opened cold from our own launcher icon nobody
+    // has yet, so requests would go out with a stale token and get 401.
+    private val clientManager: ClientManager by inject()
 
     private lateinit var account: Account
     private lateinit var kind: Kind
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var tabs: TabLayout
-    private lateinit var fab: ExtendedFloatingActionButton
+    private lateinit var fab: FloatingActionButton
+    private lateinit var appBar: View
+    private lateinit var toolbar: Toolbar
+    private var barColor: Int? = null
+    private var colorAnimator: ValueAnimator? = null
     private val adapter = RowAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,6 +109,7 @@ class DocsLauncherActivity : AppCompatActivity() {
             return
         }
         account = current
+        clientManager // make sure the login-refreshing validator is registered before any request
 
         kind = savedInstanceState?.getString(STATE_KIND)?.let { Kind.valueOf(it) } ?: kindFromLauncher()
 
@@ -109,7 +128,7 @@ class DocsLauncherActivity : AppCompatActivity() {
     }
 
     private fun buildUi() {
-        // ExtendedFloatingActionButton / TabLayout require a MaterialComponents theme; the app theme is AppCompat
+        // FloatingActionButton / TabLayout require a MaterialComponents theme; the app theme is AppCompat
         val material = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
         enableEdgeToEdgePreSetContentView(false)
 
@@ -117,9 +136,9 @@ class DocsLauncherActivity : AppCompatActivity() {
         val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         // same app bar as the rest of the app (Settings etc.)
-        val appBar = layoutInflater.inflate(R.layout.opencloud_toolbar, column, false)
+        appBar = layoutInflater.inflate(R.layout.opencloud_toolbar, column, false)
         appBar.findViewById<View>(R.id.root_toolbar).isVisible = false
-        val toolbar = appBar.findViewById<Toolbar>(R.id.standard_toolbar).apply { isVisible = true }
+        toolbar = appBar.findViewById<Toolbar>(R.id.standard_toolbar).apply { isVisible = true }
         column.addView(appBar)
 
         val list = RecyclerView(this).apply {
@@ -144,8 +163,10 @@ class DocsLauncherActivity : AppCompatActivity() {
         column.addView(tabs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(column)
 
-        fab = ExtendedFloatingActionButton(material).apply {
-            setIconResource(R.drawable.ic_add)
+        // plain round "+", like the main file list
+        fab = FloatingActionButton(material).apply {
+            setImageResource(R.drawable.ic_add)
+            contentDescription = "New"
             setOnClickListener { promptNewFile() }
         }
         root.addView(fab, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -172,13 +193,102 @@ class DocsLauncherActivity : AppCompatActivity() {
         }
         kind = newKind
         supportActionBar?.title = newKind.label
-        fab.text = "New ${newKind.singular}"
-        fab.backgroundTintList = android.content.res.ColorStateList.valueOf(newKind.color)
-        fab.setTextColor(Color.WHITE)
-        fab.iconTint = android.content.res.ColorStateList.valueOf(Color.WHITE)
-        tabs.setSelectedTabIndicatorColor(newKind.color)
+        fab.contentDescription = "New ${newKind.singular}"
+        animateColors(newKind.color)
         if (reload) load()
     }
+
+    /** Blend the app bar, status bar, tab indicator and + button from the old tab color to the new one. */
+    private fun animateColors(target: Int) {
+        val from = barColor
+        barColor = target
+        colorAnimator?.cancel()
+        if (from == null || from == target) {
+            applyColors(target)
+            return
+        }
+        colorAnimator = ValueAnimator.ofArgb(from, target).apply {
+            duration = 300
+            addUpdateListener { applyColors(it.animatedValue as Int) }
+            start()
+        }
+    }
+
+    private fun applyColors(color: Int) {
+        // dark text/icons on light colors (yellow), white on dark ones
+        val light = ColorUtils.calculateLuminance(color) > 0.5
+        val onColor = if (light) Color.parseColor("#202124") else Color.WHITE
+        appBar.setBackgroundColor(color)
+        toolbar.setBackgroundColor(color)
+        toolbar.setTitleTextColor(onColor)
+        toolbar.navigationIcon?.setTint(onColor)
+        toolbar.overflowIcon?.setTint(onColor)
+        toolbar.menu?.let { menu -> for (i in 0 until menu.size()) menu.getItem(i).icon?.setTint(onColor) }
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = light
+        tabs.setSelectedTabIndicatorColor(color)
+        fab.backgroundTintList = ColorStateList.valueOf(color)
+        fab.imageTintList = ColorStateList.valueOf(onColor)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(Menu.NONE, MENU_OPENCLOUD, 0, "Open OpenCloud").apply {
+            setIcon(R.drawable.ic_folder)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        }
+        menu.add(Menu.NONE, MENU_ICONS, 1, "Home screen icons…")
+        barColor?.let { applyColors(it) } // tint the freshly created icons
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        MENU_OPENCLOUD -> {
+            if (isTaskRoot) {
+                // opened from our own icon: bring up (or start) the main app
+                startActivity(Intent(this, SplashActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } else {
+                finish() // opened from the drawer: the file list is right behind us
+            }
+            true
+        }
+        MENU_ICONS -> {
+            showLauncherIconsDialog()
+            true
+        }
+        else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Turn the Docs / Sheets / Slides home screen icons on or off (they're activity aliases). */
+    private fun showLauncherIconsDialog() {
+        val pkg = DocsLauncherActivity::class.java.`package`!!.name
+        val aliases = arrayOf("DocsLauncher", "SheetsLauncher", "SlidesLauncher")
+        val labels = arrayOf("Docs", "Sheets", "Slides")
+        val components = aliases.map { ComponentName(packageName, "$pkg.$it") }
+        val checked = components.map { isComponentEnabled(it) }.toBooleanArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Home screen icons")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                components.forEachIndexed { i, component ->
+                    packageManager.setComponentEnabledSetting(
+                        component,
+                        if (checked[i]) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                        else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP,
+                    )
+                }
+                Toast.makeText(this, "Updated. Your launcher may take a moment to refresh.", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun isComponentEnabled(component: ComponentName): Boolean =
+        when (packageManager.getComponentEnabledSetting(component)) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED -> false
+            else -> true // default: the manifest enables all three
+        }
 
     private fun load() {
         val requestedKind = kind
@@ -388,6 +498,8 @@ class DocsLauncherActivity : AppCompatActivity() {
 
     companion object {
         private const val STATE_KIND = "docs_launcher_kind"
+        private const val MENU_OPENCLOUD = 1
+        private const val MENU_ICONS = 2
         private const val TYPE_HEADER = 0
         private const val TYPE_HINT = 1
         private const val TYPE_FILE = 2
