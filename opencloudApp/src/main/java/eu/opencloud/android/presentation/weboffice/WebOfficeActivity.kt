@@ -17,6 +17,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -44,6 +45,8 @@ class WebOfficeActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var editorHost: String? = null
+    /** host of the OpenCloud server; the editor's "back to folder" button navigates there */
+    private var serverHost: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,27 +82,41 @@ class WebOfficeActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             cacheMode = WebSettings.LOAD_DEFAULT
             setSupportZoom(false)
+            // the editor uses window.open for "go to folder" and hyperlinks; catch those in onCreateWindow
+            setSupportMultipleWindows(true)
+            javaScriptCanOpenWindowsAutomatically = true
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val url = request.url
-                // stay inside the editor; anything else (help links, hyperlinks in a doc) goes to a browser tab
-                return if (editorHost != null && url.host != editorHost && request.isForMainFrame) {
-                    CustomTabsIntent.Builder().build().launchUrl(this@WebOfficeActivity, url)
-                    true
-                } else {
-                    false
-                }
+                if (!request.isForMainFrame || request.url.host == editorHost) return false
+                handleExternalUrl(request.url)
+                return true
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 progress.visibility = View.GONE
+                view.evaluateJavascript(EDITOR_TWEAKS_JS, null)
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // window.open(): load it in a throwaway WebView just to learn the URL, then decide what to do
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                val catcher = WebView(this@WebOfficeActivity)
+                catcher.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                        handleExternalUrl(request.url)
+                        v.destroy()
+                        return true
+                    }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = catcher
+                resultMsg.sendToTarget()
+                return true
+            }
+
             // "insert image" etc. in the editor
             override fun onShowFileChooser(
                 view: WebView,
@@ -140,6 +157,9 @@ class WebOfficeActivity : AppCompatActivity() {
             val method = json.optString("method", "GET").uppercase()
             val params = json.optJSONObject("form_parameters")
             editorHost = Uri.parse(appUrl).host
+            // WOPI apps get the server's address in the WOPISrc parameter
+            serverHost = Uri.parse(appUrl).getQueryParameter("WOPISrc")?.let { Uri.parse(it).host }
+                ?: Uri.parse(appUrl).getQueryParameter("wopisrc")?.let { Uri.parse(it).host }
 
             val form = buildString {
                 params?.keys()?.forEach { key ->
@@ -158,6 +178,15 @@ class WebOfficeActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Timber.e(e, "Could not open web office editor")
             finish()
+        }
+    }
+
+    /** Links leaving the editor: back to OpenCloud closes the editor, anything else opens in a browser tab. */
+    private fun handleExternalUrl(url: Uri) {
+        if (url.host != null && url.host == serverHost) {
+            finish()
+        } else if (url.scheme == "http" || url.scheme == "https") {
+            CustomTabsIntent.Builder().build().launchUrl(this, url)
         }
     }
 
@@ -188,6 +217,45 @@ class WebOfficeActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_PAYLOAD = "web_office_payload"
         private const val REQUEST_FILE_CHOOSER = 4711
+
+        /**
+         * Small layout tweaks injected into the editor page (and its same-origin editor iframe):
+         *  - spreadsheets: move the cell input bar from the top to just above the sheet tabs,
+         *    Google Sheets style, so it sits right above the keyboard while typing.
+         * Re-applied whenever the editor iframe (re)loads.
+         */
+        private val EDITOR_TWEAKS_JS = """
+            (function () {
+              var css = '#idx-celleditor { order: 1 !important; }' +
+                        '.page[data-name="home"] .statusbar { order: 2 !important; }';
+              function inject(doc) {
+                try {
+                  if (!doc || !doc.head || doc.getElementById('oc-editor-tweaks')) return;
+                  var s = doc.createElement('style');
+                  s.id = 'oc-editor-tweaks';
+                  s.textContent = css;
+                  doc.head.appendChild(s);
+                } catch (e) {}
+              }
+              function scan() {
+                inject(document);
+                var frames = document.querySelectorAll('iframe');
+                for (var i = 0; i < frames.length; i++) {
+                  var f = frames[i];
+                  try { inject(f.contentDocument); } catch (e) {}
+                  if (!f.dataset.ocTweaks) {
+                    f.dataset.ocTweaks = '1';
+                    f.addEventListener('load', function () { try { inject(this.contentDocument); } catch (e) {} });
+                  }
+                }
+              }
+              scan();
+              if (!window.__ocTweaksObserver) {
+                window.__ocTweaksObserver = new MutationObserver(scan);
+                window.__ocTweaksObserver.observe(document.documentElement, { childList: true, subtree: true });
+              }
+            })();
+        """.trimIndent()
 
         /** true if [data] is an /app/open payload (JSON) rather than a plain browser URL */
         fun isEditorPayload(data: String?): Boolean = data?.trimStart()?.startsWith("{") == true

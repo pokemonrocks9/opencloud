@@ -1567,8 +1567,10 @@ class MainFileListFragment : Fragment(),
 
         if (ocFile.isFolder) {
             mainFileListViewModel.updateFolderToDisplay(ocFile)
-        } else { // Click on a file
-            fileActions?.onFileClicked(ocFile)
+        } else { // Click on a file: office docs open straight in the in-app editor
+            mainFileListViewModel.openInWebOfficeIfSupported(ocFile) {
+                fileActions?.onFileClicked(ocFile)
+            }
         }
     }
 

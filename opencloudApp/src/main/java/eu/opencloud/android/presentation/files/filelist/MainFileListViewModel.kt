@@ -72,6 +72,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import eu.opencloud.android.domain.files.usecases.SortType.Companion as SortTypeDomain
 
 class MainFileListViewModel(
@@ -347,6 +348,30 @@ class MainFileListViewModel(
         }
     }
 
+    /**
+     * Tap-to-open for office documents: if the server has a web office app for this file type,
+     * open it in the in-app editor; otherwise fall back to the normal download-and-open behaviour.
+     */
+    fun openInWebOfficeIfSupported(file: OCFile, onNotSupported: () -> Unit) {
+        viewModelScope.launch(coroutinesDispatcherProvider.io) {
+            val isOfficeFile = file.fileName.substringAfterLast('.', "").lowercase() in WEB_OFFICE_EXTENSIONS
+            val fileId = file.remoteId
+            val appName = if (isOfficeFile && fileId != null) {
+                val mimeType = getAppRegistryForMimeTypeAsStreamUseCase(
+                    GetAppRegistryForMimeTypeAsStreamUseCase.Params(accountName = file.owner, mimeType = file.mimeType)
+                ).firstOrNull()
+                mimeType?.defaultApplication?.takeIf { it.isNotBlank() } ?: mimeType?.appProviders?.firstOrNull()?.name
+            } else {
+                null
+            }
+            if (appName != null && fileId != null) {
+                openInWeb(fileId, appName)
+            } else {
+                withContext(coroutinesDispatcherProvider.main) { onNotSupported() }
+            }
+        }
+    }
+
     private fun updateSpace() {
         val folderToDisplay = currentFolderDisplayed.value
         viewModelScope.launch(coroutinesDispatcherProvider.io) {
@@ -455,6 +480,10 @@ class MainFileListViewModel(
     }
 
     companion object {
+        private val WEB_OFFICE_EXTENSIONS = setOf(
+            "docx", "doc", "odt", "rtf", "xlsx", "xls", "ods", "csv", "pptx", "ppt", "odp"
+        )
+
         private const val RECYCLER_VIEW_PREFERRED = "RECYCLER_VIEW_PREFERRED"
     }
 }
