@@ -215,7 +215,8 @@ class MainFileListFragment : Fragment(),
             fileActions?.setBottomBarVisibility(false)
 
             // Hide sort options view in multi-selection mode
-            binding.optionsLayout.visibility = View.GONE
+            // keep the sort/view bar's space so the list doesn't jump up; just hide its contents
+            binding.optionsLayout.visibility = View.INVISIBLE
 
             return true
         }
