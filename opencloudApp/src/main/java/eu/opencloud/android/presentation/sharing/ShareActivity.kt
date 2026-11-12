@@ -76,6 +76,8 @@ class ShareActivity : FileActivity(), ShareFragmentListener {
 
         // edge-to-edge
         enableEdgeToEdgePostSetContentView { insets ->
+            // keep the app bar below the status bar (was drawn underneath it)
+            findViewById<View>(R.id.opencloud_app_bar).updatePadding(top = insets.top)
             findViewById<View>(android.R.id.content).updatePadding(bottom = insets.bottom)
         }
 
