@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        When a selection (action mode) starts, AppCompat lays a "status guard" view behind the
+        status bar. Its color defaults to black, which is why the status bar went black while the
+        selection bar below it is the lighter action mode color. Match it to the selection bar.
+    -->
+    <color name="abc_decor_view_status_guard" tools:override="true">@color/action_mode_background</color>
+    <color name="abc_decor_view_status_guard_light" tools:override="true">@color/action_mode_background</color>
+</resources>
