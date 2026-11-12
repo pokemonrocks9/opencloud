@@ -74,10 +74,21 @@ import timber.log.Timber
 
 open class DocsLauncherActivity : AppCompatActivity() {
 
-    enum class Kind(val label: String, val singular: String, val mediaType: String, val newExt: String, val color: Int) {
-        DOCS("Docs", "document", "document", "docx", Color.parseColor("#4285F4")),
-        SHEETS("Sheets", "spreadsheet", "spreadsheet", "xlsx", Color.parseColor("#0F9D58")),
-        SLIDES("Slides", "presentation", "presentation", "pptx", Color.parseColor("#F4B400")),
+    enum class Kind(
+        val label: String,
+        val singular: String,
+        val mediaType: String,
+        val newExt: String,
+        val color: Int,
+        /** the server's media types are broad ("document" also covers txt, logs, PDFs…); keep office files only */
+        val exts: Set<String>,
+    ) {
+        DOCS("Docs", "document", "document", "docx", Color.parseColor("#4285F4"),
+            setOf("docx", "doc", "docm", "odt", "rtf", "dotx")),
+        SHEETS("Sheets", "spreadsheet", "spreadsheet", "xlsx", Color.parseColor("#0F9D58"),
+            setOf("xlsx", "xls", "xlsm", "ods", "csv", "xltx")),
+        SLIDES("Slides", "presentation", "presentation", "pptx", Color.parseColor("#F4B400"),
+            setOf("pptx", "ppt", "pptm", "odp", "potx", "ppsx")),
     }
 
     private val getUrlToOpenInWebUseCase: GetUrlToOpenInWebUseCase by inject()
@@ -306,7 +317,8 @@ open class DocsLauncherActivity : AppCompatActivity() {
                         problem = "Search failed: ${r.code} (HTTP ${r.httpCode})" +
                             (r.exception?.message?.let { " – $it" } ?: "")
                     }
-                    Pair(s.data.orEmpty(), r.data.orEmpty())
+                    val wanted = { item: SearchResult -> item.name.substringAfterLast('.', "").lowercase() in requestedKind.exts }
+                    Pair(s.data.orEmpty().filter(wanted), r.data.orEmpty().filter(wanted))
                 } catch (e: Exception) {
                     Timber.e(e, "Docs launcher could not reach the server")
                     problem = "Couldn't reach the server: ${e.javaClass.simpleName} ${e.message.orEmpty()}"
