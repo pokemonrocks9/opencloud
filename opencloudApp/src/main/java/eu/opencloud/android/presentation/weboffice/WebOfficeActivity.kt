@@ -21,6 +21,7 @@ import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -99,6 +100,7 @@ class WebOfficeActivity : AppCompatActivity() {
             javaScriptCanOpenWindowsAutomatically = true
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        webView.addJavascriptInterface(ShareBridge(), "OCShareBridge")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -110,6 +112,7 @@ class WebOfficeActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String) {
                 progress.visibility = View.GONE
                 view.evaluateJavascript(EDITOR_TWEAKS_JS, null)
+                view.evaluateJavascript(SHARE_HOOK_JS, null)
             }
         }
 
@@ -208,6 +211,19 @@ class WebOfficeActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * With FileSharingPostMessage enabled the editor doesn't open a share link any more; it posts
+     * "UI_Sharing" to its parent page. Here the editor *is* the top page, so SHARE_HOOK_JS catches
+     * that message and hands us the file's share link from the editor's file info.
+     */
+    private inner class ShareBridge {
+        @JavascriptInterface
+        fun share(sharingUrl: String) {
+            if (sharingUrl.isBlank()) return
+            runOnUiThread { openShareScreen(Uri.parse(sharingUrl)) }
+        }
+    }
+
     private fun openShareScreen(url: Uri) {
         val account = AccountUtils.getCurrentOpenCloudAccount(this) ?: return
         lifecycleScope.launch {
@@ -262,6 +278,27 @@ class WebOfficeActivity : AppCompatActivity() {
          *    Google Sheets style, so it sits right above the keyboard while typing.
          * Re-applied whenever the editor iframe (re)loads.
          */
+        /** Catch the editor's "UI_Sharing" message (see ShareBridge). */
+        private val SHARE_HOOK_JS = """
+            (function () {
+              if (window.__ocShareHook) return;
+              window.__ocShareHook = true;
+              var original = window.postMessage;
+              window.postMessage = function (message) {
+                try {
+                  var data = typeof message === 'string' ? JSON.parse(message) : message;
+                  if (data && data.MessageId === 'UI_Sharing') {
+                    var el = document.getElementById('fileInfoJsonData');
+                    var info = el ? JSON.parse(el.getAttribute('data-json')) : {};
+                    OCShareBridge.share(info.FileSharingUrl || '');
+                    return;
+                  }
+                } catch (e) {}
+                return original.apply(window, arguments);
+              };
+            })();
+        """.trimIndent()
+
         private val EDITOR_TWEAKS_JS = """
             (function () {
               var css = '#idx-celleditor { order: 1 !important; }' +
