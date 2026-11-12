@@ -35,6 +35,17 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
+import eu.opencloud.android.domain.files.usecases.ManageDeepLinkUseCase
+import eu.opencloud.android.presentation.authentication.AccountUtils
+import eu.opencloud.android.presentation.sharing.ShareActivity
+import eu.opencloud.android.ui.activity.FileActivity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.android.ext.android.inject
+import android.widget.Toast
+import java.net.URI
 import org.json.JSONObject
 import timber.log.Timber
 import java.net.URLEncoder
@@ -44,6 +55,7 @@ class WebOfficeActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var progress: ProgressBar
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val manageDeepLinkUseCase: ManageDeepLinkUseCase by inject()
     private var editorHost: String? = null
     /** host of the OpenCloud server; the editor's "back to folder" button navigates there */
     private var serverHost: String? = null
@@ -183,10 +195,36 @@ class WebOfficeActivity : AppCompatActivity() {
 
     /** Links leaving the editor: back to OpenCloud closes the editor, anything else opens in a browser tab. */
     private fun handleExternalUrl(url: Uri) {
-        if (url.host != null && url.host == serverHost) {
+        // the editor's Share button points at the file's private link with ?details=sharing:
+        // open the app's own share screen for that file instead of leaving the editor
+        if (url.host != null && url.host == serverHost && url.getQueryParameter("details") == "sharing" &&
+            url.pathSegments.size >= 2 && url.pathSegments[url.pathSegments.size - 2] == "f"
+        ) {
+            openShareScreen(url)
+        } else if (url.host != null && url.host == serverHost) {
             finish()
         } else if (url.scheme == "http" || url.scheme == "https") {
             CustomTabsIntent.Builder().build().launchUrl(this, url)
+        }
+    }
+
+    private fun openShareScreen(url: Uri) {
+        val account = AccountUtils.getCurrentOpenCloudAccount(this) ?: return
+        lifecycleScope.launch {
+            val file = withContext(Dispatchers.IO) {
+                val privateLink = url.buildUpon().clearQuery().fragment(null).build().toString()
+                manageDeepLinkUseCase(ManageDeepLinkUseCase.Params(URI(privateLink), account.name)).getDataOrNull()
+            }
+            if (file == null) {
+                Toast.makeText(this@WebOfficeActivity, "Couldn't find this file to share", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            // the editor stays open underneath; back from the share screen returns to it
+            startActivity(
+                Intent(this@WebOfficeActivity, ShareActivity::class.java)
+                    .putExtra(FileActivity.EXTRA_FILE, file)
+                    .putExtra(FileActivity.EXTRA_ACCOUNT, account)
+            )
         }
     }
 
